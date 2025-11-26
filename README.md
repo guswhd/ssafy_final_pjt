@@ -2,7 +2,7 @@
 
 **Tested with Intel RealSense D435i (Mono + IMU)**
 
-이 프로젝트는 **VINS-Fusion**을 ROS 2 Humble 환경에서 동작하도록 포팅한 버전(_JanekDev/VINS-Fusion-ROS2-humble_https://github.com/JanekDev/VINS-Fusion-ROS2-humble)
+이 프로젝트는 **VINS-Fusion**을 ROS 2 Humble 환경에서 동작하도록 포팅한 버전(https://github.com/JanekDev/VINS-Fusion-ROS2-humble)
 을 바탕으로, **CPU-only(Non-CUDA)** 환경과 **RealSense D435i**에서 안정적으로 작동하도록 수정한 버전입니다.
 
 ---
