@@ -2,8 +2,7 @@
 
 **Tested with Intel RealSense D435i (Mono + IMU)**
 
-이 프로젝트는 **VINS-Fusion**을 ROS 2 Humble 환경에서 동작하도록 포팅한 버전
-👉 (_기반 저장소: JanekDev/VINS-Fusion-ROS2-humble_)
+이 프로젝트는 **VINS-Fusion**을 ROS 2 Humble 환경에서 동작하도록 포팅한 버전(_JanekDev/VINS-Fusion-ROS2-humble_https://github.com/JanekDev/VINS-Fusion-ROS2-humble)
 을 바탕으로, **CPU-only(Non-CUDA)** 환경과 **RealSense D435i**에서 안정적으로 작동하도록 수정한 버전입니다.
 
 ---
@@ -106,7 +105,7 @@ source install/setup.bash
 
 `src/VINS-Fusion-ROS2-humble/config/my_realsense_config.yaml` 생성
 
-> ⚠️ **중요:**
+> **중요:**
 >
 > - Mono + IMU → `num_of_cam: 1`
 > - IMU 토픽: `unite_imu_method:=2` 사용 시 `/camera/camera/imu`
@@ -201,7 +200,7 @@ source ~/ros2_ws/install/setup.bash
 ros2 run vins vins_node src/VINS-Fusion-ROS2-humble/config/my_realsense_config.yaml
 ```
 
-> 📌 실행 후 "waiting for image..." → 카메라를 천천히 움직여서 초기화하세요.
+> 실행 후 "waiting for image..." → 카메라를 천천히 움직여서 초기화하세요.
 
 ---
 
@@ -212,7 +211,7 @@ source ~/ros2_ws/install/setup.bash
 ros2 run rviz2 rviz2 -d src/VINS-Fusion-ROS2-humble/config/vins_rviz_config.rviz
 ```
 
-> ⚠️ RViz Fixed Frame → `world` 또는 `odom`
+> RViz Fixed Frame → `world` 또는 `odom`
 
 ---
 
@@ -253,16 +252,8 @@ RealSense는 Best Effort → VINS는 Reliable
 
 ---
 
-## ⭐ Summary
+## Summary
 
 이 패치는 다음 사용자에게 적합합니다:
 
-✔️ ROS 2 Humble 환경에서
-✔️ CUDA 없이 CPU-only로
-✔️ RealSense D435i Mono + IMU 조합을
-✔️ 안정적으로 VINS-Fusion에 연결하여 사용하고 싶은 사용자
-
----
-
-필요하시면 **전체 GitHub용 폴더 구조**, **캘리브레이션 파일 템플릿**,
-또는 **launch 파일 자동화**까지도 만들어 드릴 수 있습니다!
+ROS 2 Humble 환경에서 CUDA 없이 CPU-only로 RealSense D435i Mono + IMU 조합을 안정적으로 VINS-Fusion에 연결하여 사용하고 싶은 사용자
