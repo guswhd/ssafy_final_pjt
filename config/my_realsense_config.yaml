@@ -2,28 +2,26 @@
 
 # --- 센서 설정 ---
 imu: 1
-num_of_cam: 1          # 변경됨: 2 -> 1 (Mono 모드)
+num_of_cam: 2          # [변경됨] 2: Stereo + IMU 모드
 
 # --- ROS 2 토픽 이름 ---
-# 리얼센스 실행 시 나오는 정확한 토픽명을 적어야 합니다.
 imu_topic: "/camera/camera/imu"
 image0_topic: "/camera/camera/infra1/image_rect_raw"
-# image1_topic: ... (Mono 모드에서는 사용 안 함)
+image1_topic: "/camera/camera/infra2/image_rect_raw"  # [추가됨] 오른쪽 카메라 토픽
 
 output_path: "/tmp/"
 
-# --- 카메라 캘리브레이션 파일 경로 (절대 경로 필수!) ---
-# 예시 경로입니다. 본인의 실제 경로를 확인해서 넣어주세요.
-cam0_calib: "/realsense_d435i/left.yaml"
-# cam1_calib: ... (Mono 모드에서는 필요 없음)
+# --- 카메라 캘리브레이션 파일 경로 (상대 경로) ---
+cam0_calib: "realsense_d435i/left.yaml"
+cam1_calib: "realsense_d435i/right.yaml"              # [추가됨] 오른쪽 카메라 설정 파일
 
 image_width: 640
 image_height: 480
 
 # --- IMU-Camera 간 변환 행렬 (Extrinsic) ---
-estimate_extrinsic: 1   # 1: VINS가 실행되면서 값을 미세조정함 (추천)
+estimate_extrinsic: 1   # 1: 초기값을 바탕으로 VINS가 미세조정함
 
-# (D435i 기준 대략적인 초기값)
+# (D435i 왼쪽 카메라 - IMU 간 변환)
 body_T_cam0: !!opencv-matrix
    rows: 4
    cols: 4
@@ -33,7 +31,16 @@ body_T_cam0: !!opencv-matrix
            0, 0, 1, 0,
            0, 0, 0, 1 ]
 
-# body_T_cam1: ... (Mono 모드에서는 필요 없음)
+# [추가됨] (D435i 오른쪽 카메라 - IMU 간 변환)
+# x축으로 약 50mm(0.05m) 떨어져 있음을 명시
+body_T_cam1: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: d
+   data: [ 1, 0, 0, 0.04,
+           0, 1, 0, 0,
+           0, 0, 1, 0,
+           0, 0, 0, 1 ]
 
 # --- 기타 알고리즘 설정 ---
 multiple_thread: 1
@@ -49,16 +56,15 @@ max_solver_time: 0.04
 max_num_iterations: 8
 keyframe_parallax: 10.0
 
-# IMU Noise
-acc_n: 0.1
-gyr_n: 0.01
-acc_w: 0.001
-gyr_w: 0.0001
+# IMU Noise (빠른 움직임에 대비해 약간 높임)
+acc_n: 0.2          # 0.1 -> 0.2
+gyr_n: 0.02         # 0.01 -> 0.02
+acc_w: 0.0002
+gyr_w: 2.0e-5
 g_norm: 9.805
 
-estimate_td: 0     # 리얼센스는 하드웨어 싱크가 되므로 0으로 둬도 무방
+estimate_td: 0
 td: 0.00
-
 load_previous_pose_graph: 0
 pose_graph_save_path: "/tmp/pose_graph/"
 save_image: 0

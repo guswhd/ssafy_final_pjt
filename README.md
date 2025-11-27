@@ -1,82 +1,268 @@
-# VINS-Fusion
+# VINS-Fusion for ROS 2 Humble (CPU Mode)
 
-## ROS2 version of VINS-Fusion.
+**Tested with Intel RealSense D435i (Mono + IMU)**
 
-### Notices
-- code has been updated so that the vins package can be executed via ros2 run or ros2 launch
-- but Rviz config cannot be saved due to some issue.. still fixing
-- GPU enable/disable features also have been added: refer [EuRoC config](https://github.com/zinuok/VINS-Fusion-ROS2/blob/main/config/euroc/euroc_stereo_imu_config.yaml#L19-L21) (refered from [here](https://github.com/pjrambo/VINS-Fusion-gpu) and [here](https://github.com/pjrambo/VINS-Fusion-gpu/issues/33#issuecomment-1097642597))
-  - The GPU version has some CUDA library [dependencies: OpenCV with CUDA](https://github.com/zinuok/VINS-Fusion-ROS2/blob/main/vins/src/featureTracker/feature_tracker.h#L21-L23). Therefore, if it is a bothersome to you and only need the cpu version, please comment the following compiler macro at line 14 in the 'feature_tracker.h': .
-  ```bash
-  #define GPU_MODE 1
-  ```
+이 프로젝트는 **VINS-Fusion**을 ROS 2 Humble 환경에서 동작하도록 포팅한 버전
+👉 (_기반 저장소: JanekDev/VINS-Fusion-ROS2-humble_)
+을 바탕으로, **CPU-only(Non-CUDA)** 환경과 **RealSense D435i**에서 안정적으로 작동하도록 수정한 버전입니다.
 
-### Prerequisites
-- **System**
-  - Ubuntu 20.04
-  - ROS2 foxy
-- **Libraries**
-  - OpenCV 3.4.1 (with CUDA enabled option)
-  - OpenCV 3.4.1-contrib
-  - [Ceres Solver-2.1.0](http://ceres-solver.org/installation.html) (you can refer [here](https://github.com/zinuok/VINS-Fusion#-ceres-solver-1); just edit 1.14.0 to 2.1.0 for install.)
-  - [Eigen-3.3.9](https://github.com/zinuok/VINS-Fusion#-eigen-1)
+---
 
+## 1. Prerequisites (환경 및 의존성)
 
-### sensor setup
-- camera: Intel realsense D435i
-- using following shell script, you can install realsense SDK with ROS2 package.
+### **System**
+
+- **OS:** Ubuntu 22.04 LTS (Jammy)
+- **ROS:** ROS 2 Humble Hawksbill
+- **Hardware:** Intel RealSense D435i (RGB-D + IMU)
+
+### **Dependencies 설치**
+
 ```bash
-chmod +x realsense_install.sh
-bash realsense_install.sh
+sudo apt update
+sudo apt install -y ros-humble-desktop \
+    ros-humble-cv-bridge \
+    ros-humble-image-transport \
+    ros-humble-tf2-eigen \
+    ros-humble-tf2-geometry-msgs \
+    ros-humble-pcl-ros \
+    ros-humble-realsense2-camera
 ```
 
+#### Ceres Solver
 
-### build
 ```bash
-cd $(PATH_TO_YOUR_ROS2_WS)/src
-git clone https://github.com/zinuok/VINS-Fusion-ROS2
-cd ..
-colcon build --symlink-install && source ./install/setup.bash && source ./install/local_setup.bash
+sudo apt install -y libgoogle-glog-dev libgflags-dev libatlas-base-dev \
+    libsuitesparse-dev libceres-dev
 ```
 
-### run
-```bash
-# vins
-ros2 run vins $(PATH_TO_YOUR_VINS_CONFIG_FILE)
+---
 
-# Rviz2 visualization
-ros2 launch vins vins_rviz.launch.xml
+## 2. Source Code Modifications (코드 수정 사항)
+
+ROS 2 Humble / Non-CUDA 환경에서 빌드하기 위한 필수 수정입니다.
+
+---
+
+### **2.1 Disable GPU/CUDA**
+
+`vins/src/featureTracker/feature_tracker.h`
+
+```cpp
+// #define GPU_MODE 1   // 주석 처리하여 CPU 모드 사용
 ```
 
+---
 
-## play bag recorded at ROS1
-Unfortunately, you can't just play back the bag file recorded at ROS1. 
-This is because the filesystem structure for bag file has been changed significantly.
-The bag file at ROS2 needs the folder with some meta data for each bag file, which is done using following commands.
-- you have to install [this pkg](https://gitlab.com/ternaris/rosbags)
-```bash
-pip install rosbags
+### **2.2 Ceres Solver Options 수정**
+
+`vins/src/estimator/estimator.cpp` (약 Line 1171)
+
+```cpp
+// options.dense_linear_algebra_library_type = ceres::CUDA;  // 에러 발생
+options.dense_linear_algebra_library_type = ceres::EIGEN;    // EIGEN 사용
 ```
 
-- run
-```bash
-export PATH=$PATH:~/.local/bin
-rosbags-convert foo.bag --dst /path/to/bar
+---
+
+### **2.3 Fix rclcpp::Duration (ROS 2 Humble 호환성)**
+
+`loop_fusion/src/utility/CameraPoseVisualization.cpp` (약 Line 95)
+
+```cpp
+// marker.lifetime = rclcpp::Duration(0);   // 에러
+marker.lifetime = rclcpp::Duration(0, 0);   // (sec, nanosec)
 ```
 
+---
 
+### **2.4 Fix Sensor QoS (RealSense 호환성 필수)**
 
+`vins/src/rosNodeTest.cpp`
 
+RealSense는 **Best Effort** QoS를 사용하므로, Subscriber QoS를 아래처럼 변경해야 합니다.
 
+```cpp
+imu_sub = this->create_subscription<sensor_msgs::msg::Imu>(
+    imu_topic, rclcpp::SensorDataQoS(), imu_callback);
 
-## Original Readme:
+img0_sub = this->create_subscription<sensor_msgs::msg::Image>(
+    img0_topic, rclcpp::SensorDataQoS(), img0_callback);
+```
 
-## 8. Acknowledgements
-We use [ceres solver](http://ceres-solver.org/) for non-linear optimization and [DBoW2](https://github.com/dorian3d/DBoW2) for loop detection, a generic [camera model](https://github.com/hengli/camodocal) and [GeographicLib](https://geographiclib.sourceforge.io/).
+---
 
-## 9. License
-The source code is released under [GPLv3](http://www.gnu.org/licenses/) license.
+## 3. Build
 
-We are still working on improving the code reliability. For any technical issues, please contact Tong Qin <qintonguavATgmail.com>.
+```bash
+cd ~/ros2_ws
+colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+source install/setup.bash
+```
 
-For commercial inquiries, please contact Shaojie Shen <eeshaojieATust.hk>.
+---
+
+## 4. Configuration (설정 파일)
+
+`src/VINS-Fusion-ROS2-humble/config/my_realsense_config.yaml` 생성
+
+> ⚠️ **중요:**
+>
+> - Mono + IMU → `num_of_cam: 1`
+> - IMU 토픽: `unite_imu_method:=2` 사용 시 `/camera/camera/imu`
+> - 캘리브레이션 파일은 **절대 경로 금지**, 반드시 **상대 경로 사용**
+
+---
+
+### **my_realsense_config.yaml**
+
+```yaml
+%YAML:1.0
+
+# --- Sensor Settings ---
+imu: 1
+num_of_cam: 1
+
+# --- Topic Names ---
+imu_topic: "/camera/camera/imu"
+image0_topic: "/camera/camera/infra1/image_rect_raw"
+output_path: "/tmp/"
+
+# --- Calibration Files ---
+cam0_calib: "realsense_d435i/left.yaml"
+image_width: 640
+image_height: 480
+
+# --- Extrinsic Parameter ---
+estimate_extrinsic: 1
+body_T_cam0: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: d
+   data: [ 1, 0, 0, -0.01,
+           0, 1, 0, 0,
+           0, 0, 1, 0,
+           0, 0, 0, 1 ]
+
+# --- Algorithm Settings ---
+multiple_thread: 1
+max_cnt: 150
+min_dist: 30
+freq: 10
+F_threshold: 1.0
+show_track: 1
+flow_back: 1
+
+max_solver_time: 0.04
+max_num_iterations: 8
+keyframe_parallax: 10.0
+
+# IMU Noise (D435i)
+acc_n: 0.1
+gyr_n: 0.01
+acc_w: 0.001
+gyr_w: 0.0001
+g_norm: 9.805
+
+estimate_td: 0
+td: 0.00
+load_previous_pose_graph: 0
+pose_graph_save_path: "/tmp/pose_graph/"
+save_image: 0
+```
+
+---
+
+## 5. Running
+
+3개의 터미널에서 실행합니다.
+
+---
+
+### **Terminal 1 — RealSense Camera**
+
+```bash
+ros2 launch realsense2_camera rs_launch.py \
+    enable_gyro:=true \
+    enable_accel:=true \
+    unite_imu_method:=2 \
+    enable_sync:=true \
+    enable_infra1:=true \
+    enable_infra2:=true \
+    depth_module.profile:=640x480x30
+```
+
+---
+
+### **Terminal 2 — VINS-Fusion**
+
+```bash
+source ~/ros2_ws/install/setup.bash
+ros2 run vins vins_node src/VINS-Fusion-ROS2-humble/config/my_realsense_config.yaml
+```
+
+> 📌 실행 후 "waiting for image..." → 카메라를 천천히 움직여서 초기화하세요.
+
+---
+
+### **Terminal 3 — RViz**
+
+```bash
+source ~/ros2_ws/install/setup.bash
+ros2 run rviz2 rviz2 -d src/VINS-Fusion-ROS2-humble/config/vins_rviz_config.rviz
+```
+
+> ⚠️ RViz Fixed Frame → `world` 또는 `odom`
+
+---
+
+## 6. Troubleshooting
+
+### **Segmentation Fault**
+
+가능한 원인:
+
+1. **config.yaml 경로 오류**
+
+   - 절대 경로 사용 시
+     `/config//home/...` 같은 잘못된 경로 생성
+   - 반드시 상대 경로 사용 (`realsense_d435i/left.yaml`)
+
+2. **QoS mismatch (가장 흔함)**
+
+   - Subscriber를 `SensorDataQoS()`로 수정해야 정상 작동
+
+---
+
+### **Incompatible QoS Warning**
+
+RealSense는 Best Effort → VINS는 Reliable
+→ 반드시 QoS 수정 필요 (위 2.4 항목)
+
+---
+
+### **Waiting for image and imu... (무한 대기)**
+
+확인 Checklist:
+
+- `ros2 topic list`
+  → 토픽 이름이 config와 일치하는가?
+
+- unite_imu_method:=2 옵션 사용했는가?
+  → 사용하지 않으면 IMU 발행 안 됨
+
+---
+
+## ⭐ Summary
+
+이 패치는 다음 사용자에게 적합합니다:
+
+✔️ ROS 2 Humble 환경에서
+✔️ CUDA 없이 CPU-only로
+✔️ RealSense D435i Mono + IMU 조합을
+✔️ 안정적으로 VINS-Fusion에 연결하여 사용하고 싶은 사용자
+
+---
+
+필요하시면 **전체 GitHub용 폴더 구조**, **캘리브레이션 파일 템플릿**,
+또는 **launch 파일 자동화**까지도 만들어 드릴 수 있습니다!
