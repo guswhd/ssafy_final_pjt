@@ -217,8 +217,22 @@ static void pid_loop_cb(void *args)
     pcnt_unit_get_count(ctx->pcnt_encoder_left, &left_count);
     pcnt_unit_get_count(ctx->pcnt_encoder_right, &right_count);
 
-    float raw_speed = (left_count + right_count) / 2.0f;
+    static int prev_left = 0;
+    static int prev_right = 0;
+
+    float raw_speed = ((left_count - prev_left) + (right_count - prev_right)) / 2.0f;
+    prev_left = left_count;
+    prev_right = right_count;
+    
     ctx->lpf_speed = (VELOCITY_FILTER_ALPHA * raw_speed) + ((1.0 - VELOCITY_FILTER_ALPHA) *ctx->lpf_speed);
+
+    //add Cutoff
+    if (fabs(ctx->current_pitch) > 45.0) {
+        set_motor_speed_safe(ctx->motor_left, 0);
+        set_motor_speed_safe(ctx->motor_right, 0);
+        ESP_LOGE(TAG, "Error: Robot fallen, ending PID loop");
+        return;
+    }
 
     float target_pitch = 0;
     //float vel_error = ctx->target_speed - raw_speed;
@@ -226,7 +240,8 @@ static void pid_loop_cb(void *args)
     pid_compute(ctx->pid_ctrl_velocity, velocity_error, &target_pitch);
 
     float balance_pwm = 0;
-    float balance_error = target_pitch - ctx->current_pitch;
+    float balance_error = ctx->current_pitch - target_pitch;
+    //float balance_error = target_pitch - ctx->current_pitch;
     pid_compute(ctx->pid_ctrl_balance, balance_error, &balance_pwm);
 
     float turn_pwm = 0;
@@ -246,6 +261,7 @@ extern "C" void app_main(void)
         .pcnt_encoder_left = NULL,
         .pcnt_encoder_right = NULL,
         .target_speed = 0.0f,
+        .current_pitch = 0.0f,
     };
     //==================================== uROS Configuration Starts ===========================================
     #if defined(RMW_UXRCE_TRANSPORT_CUSTOM)
@@ -327,8 +343,8 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(pcnt_channel_set_level_action(ml_pcnt_chan_a, PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
     ESP_ERROR_CHECK(pcnt_channel_set_edge_action(ml_pcnt_chan_b, PCNT_CHANNEL_EDGE_ACTION_INCREASE, PCNT_CHANNEL_EDGE_ACTION_DECREASE));
     ESP_ERROR_CHECK(pcnt_channel_set_level_action(ml_pcnt_chan_b, PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
-    //ESP_ERROR_CHECK(pcnt_unit_add_watch_point(ml_pcnt_unit, ENC_HIGH_LIMIT));
-    //ESP_ERROR_CHECK(pcnt_unit_add_watch_point(ml_pcnt_unit, ENC_LOW_LIMIT));
+    ESP_ERROR_CHECK(pcnt_unit_add_watch_point(ml_pcnt_unit, ENC_HIGH_LIMIT));
+    ESP_ERROR_CHECK(pcnt_unit_add_watch_point(ml_pcnt_unit, ENC_LOW_LIMIT));
 
     ESP_ERROR_CHECK(pcnt_unit_enable(ml_pcnt_unit));
     ESP_ERROR_CHECK(pcnt_unit_clear_count(ml_pcnt_unit));
@@ -358,8 +374,8 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(pcnt_channel_set_level_action(mr_pcnt_chan_a, PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
     ESP_ERROR_CHECK(pcnt_channel_set_edge_action(mr_pcnt_chan_b, PCNT_CHANNEL_EDGE_ACTION_INCREASE, PCNT_CHANNEL_EDGE_ACTION_DECREASE));
     ESP_ERROR_CHECK(pcnt_channel_set_level_action(mr_pcnt_chan_b, PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
-    //ESP_ERROR_CHECK(pcnt_unit_add_watch_point(mr_pcnt_unit, ENC_HIGH_LIMIT));
-    //ESP_ERROR_CHECK(pcnt_unit_add_watch_point(mr_pcnt_unit, ENC_LOW_LIMIT));
+    ESP_ERROR_CHECK(pcnt_unit_add_watch_point(mr_pcnt_unit, ENC_HIGH_LIMIT));
+    ESP_ERROR_CHECK(pcnt_unit_add_watch_point(mr_pcnt_unit, ENC_LOW_LIMIT));
 
     ESP_ERROR_CHECK(pcnt_unit_enable(mr_pcnt_unit));
     ESP_ERROR_CHECK(pcnt_unit_clear_count(mr_pcnt_unit));
@@ -444,60 +460,41 @@ extern "C" void app_main(void)
             0); //run at core 0, priority 5
 
     //==================================== IMU Configuration Starts ===========================================
-    // static BNO08x imu;
-    // if (!imu.initialize())
-    // {
-    //     ESP_LOGE(TAG, "Init failure, returning from main.");
-    //     return;
-    // }
+    static BNO08x imu;
+    if (!imu.initialize())
+    {
+        ESP_LOGE(TAG, "Init failure, returning from main.");
+        return;
+    }
 
-    // // enable game rotation vector and calibrated gyro reports
-    // imu.rpt.rv_game.enable(10000UL);  // 100,000us == 100ms report interval
-    // imu.rpt.cal_gyro.enable(10000UL); // 100,000us == 100ms report interval
-
+    // enable game rotation vector and calibrated gyro reports
+    imu.rpt.rv_game.enable(5000UL);  // 100,000us == 100ms report interval
+    imu.rpt.cal_gyro.enable(5000UL); // 100,000us == 100ms report interval
     //==================================== Main Loop Starts ===========================================
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1000)); // 0.5초마다 출력 (너무 빠르면 보기 힘듭니다)
-
-        // 1. 엔코더 값 읽기
-        int left_enc_count = 0;
-        int right_enc_count = 0;
-        
-        // PCNT 드라이버가 초기화된 경우에만 읽기 시도 (NULL 체크)
-        if (robot_ctrl_ctx.pcnt_encoder_left && robot_ctrl_ctx.pcnt_encoder_right) {
-            ESP_ERROR_CHECK(pcnt_unit_get_count(robot_ctrl_ctx.pcnt_encoder_left, &left_enc_count));
-            ESP_ERROR_CHECK(pcnt_unit_get_count(robot_ctrl_ctx.pcnt_encoder_right, &right_enc_count));
-        }
-
-        // 2. 통합 정보 출력 (ROS 수신 값 + 엔코더 값)
-        // USB-OTG 포트로 출력됩니다.
-        printf("ROS Count: %u | Target Spd: %.2f | Enc Left: %d | Enc Right: %d\n", 
-            (unsigned int)callback_count, 
-            robot_ctrl_ctx.target_speed,
-            left_enc_count,
-            right_enc_count);
+        vTaskDelay(pdMS_TO_TICKS(1)); // 0.5초마다 출력 (너무 빠르면 보기 힘듭니다)
         // block until new report is detected
-        // if (imu.data_available())
-        // {
-        //     // check for game rotation vector report
-        //     if (imu.rpt.rv_game.has_new_data())
-        //     {
-        //         // get absolute heading in degrees
-        //         bno08x_euler_angle_t euler = imu.rpt.rv_game.get_euler();
-        //         // display heading
-        //         //ESP_LOGI(TAG, "Euler Angle: x (roll): %.2f y (pitch): %.2f z (yaw): %.2f", euler.x, euler.y, euler.z);
-        //         robot_ctrl_ctx.current_pitch = euler.y;
-        //     }
+        if (imu.data_available())
+        {
+            // check for game rotation vector report
+            if (imu.rpt.rv_game.has_new_data())
+            {
+                // get absolute heading in degrees
+                bno08x_euler_angle_t euler = imu.rpt.rv_game.get_euler();
+                // display heading
+                ESP_LOGI(TAG, "Euler Angle: x (roll): %.2f y (pitch): %.2f z (yaw): %.2f", euler.x, euler.y, euler.z);
+                robot_ctrl_ctx.current_pitch = euler.y;
+            }
 
-        //     // check for cal gyro report
-        //     if (imu.rpt.cal_gyro.has_new_data())
-        //     {
-        //         // get angular velocity in rad/s
-        //         bno08x_gyro_t velocity = imu.rpt.cal_gyro.get();
-        //         // display velocity
-        //         //ESP_LOGW(TAG, "Velocity: x: %.2f y: %.2f z: %.2f", velocity.x, velocity.y, velocity.z);
-        //         robot_ctrl_ctx.current_yaw_rate = velocity.z;
-        //     }
-        // }
+            // check for cal gyro report
+            if (imu.rpt.cal_gyro.has_new_data())
+            {
+                // get angular velocity in rad/s
+                bno08x_gyro_t velocity = imu.rpt.cal_gyro.get();
+                // display velocity
+                ESP_LOGW(TAG, "Velocity: x: %.2f y: %.2f z: %.2f", velocity.x, velocity.y, velocity.z);
+                robot_ctrl_ctx.current_yaw_rate = velocity.z;
+            }
+        }
     }
 }
