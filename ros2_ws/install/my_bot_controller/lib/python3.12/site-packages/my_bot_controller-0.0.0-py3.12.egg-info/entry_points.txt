@@ -1,0 +1,2 @@
+[console_scripts]
+controller = my_bot_controller.gui_controller:main
