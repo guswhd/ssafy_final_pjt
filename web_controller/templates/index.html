@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SSAFY Visual Radar</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body { background-color: #121212; color: white; text-align: center; font-family: 'Segoe UI', sans-serif; margin: 0; overflow: hidden; }
+        
+        /* 타이틀 및 정보창 */
+        h2 { margin: 15px 0 5px 0; font-size: 18px; color: #ddd; }
+        
+        /* 좌표 정보 (레이더 바깥으로 뺌) */
+        .info-panel {
+            background-color: #1e1e1e;
+            color: #00ff00;
+            padding: 8px 20px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-bottom: 10px;
+            font-family: monospace;
+            font-size: 16px;
+            border: 1px solid #333;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        /* 레이더 맵 스타일 */
+        #radar-container {
+            position: relative;
+            margin: 0 auto 20px auto;
+            width: 340px;
+            height: 340px;
+            background-color: #1e1e1e;
+            border-radius: 50%;
+            border: 3px solid #444;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8), 0 0 15px rgba(0, 255, 0, 0.2);
+            overflow: hidden;
+        }
+        canvas { display: block; }
+        
+        /* 컨트롤러 버튼 스타일 */
+        .controls {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            position: absolute; bottom: 20px; left: 0; right: 0;
+        }
+        .row { display: flex; justify-content: center; margin: 4px; }
+        button {
+            width: 55px; height: 55px; margin: 4px;
+            font-size: 22px; border-radius: 12px; border: none;
+            background-color: #333; color: white;
+            box-shadow: 0 4px #000; transition: transform 0.1s;
+        }
+        button:active { transform: translateY(4px); box-shadow: 0 0 #000; }
+        .btn-stop { background-color: #d32f2f; width: 65px; height: 65px; font-weight: bold; font-size: 14px; }
+        .btn-dir { background-color: #1565C0; }
+    </style>
+</head>
+<body>
+
+    <h2>🤖 SSAFY Robot Radar</h2>
+
+    <div class="info-panel">
+        X: <span id="val_x">0.00</span>m &nbsp;|&nbsp; Y: <span id="val_y">0.00</span>m &nbsp;|&nbsp; <span id="val_head">0</span>°
+    </div>
+
+    <div id="radar-container">
+        <canvas id="mapCanvas" width="340" height="340"></canvas>
+    </div>
+
+    <div class="controls">
+        <div class="row">
+            <button class="btn-dir" ontouchstart="send('upleft')" onmousedown="send('upleft')">↖</button>
+            <button class="btn-dir" ontouchstart="send('up')" onmousedown="send('up')">▲</button>
+            <button class="btn-dir" ontouchstart="send('upright')" onmousedown="send('upright')">↗</button>
+        </div>
+        <div class="row">
+            <button class="btn-dir" ontouchstart="send('left')" onmousedown="send('left')">◀</button>
+            <button class="btn-stop" ontouchstart="send('stop')" onmousedown="send('stop')">STOP</button>
+            <button class="btn-dir" ontouchstart="send('right')" onmousedown="send('right')">▶</button>
+        </div>
+        <div class="row">
+            <button class="btn-dir" ontouchstart="send('downleft')" onmousedown="send('downleft')">↙</button>
+            <button class="btn-dir" ontouchstart="send('down')" onmousedown="send('down')">▼</button>
+            <button class="btn-dir" ontouchstart="send('downright')" onmousedown="send('downright')">↘</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        const cx = width / 2;
+        const cy = height / 2;
+        const scale = 50; // 1미터 = 50픽셀
+
+        let robot = { x: 0, y: 0, head: 0 };
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            // (1) 그리드 (배경)
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for(let x = cx % scale; x < width; x += scale) { ctx.moveTo(x, 0); ctx.lineTo(x, height); }
+            for(let y = cy % scale; y < height; y += scale) { ctx.moveTo(0, y); ctx.lineTo(width, y); }
+            ctx.stroke();
+
+            // (2) 십자선 (원점)
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx, 0); ctx.lineTo(cx, height);
+            ctx.moveTo(0, cy); ctx.lineTo(width, cy);
+            ctx.stroke();
+
+            // --- 로봇 좌표 계산 ---
+            // ROS 좌표계(X:앞, Y:좌) -> 캔버스(X:우, Y:하) 변환
+            let screenX = cx - (robot.y * scale);
+            let screenY = cy - (robot.x * scale);
+
+            ctx.save();
+            ctx.translate(screenX, screenY);
+            ctx.rotate(-robot.head * Math.PI / 180); 
+
+            // (3) 시야각 (FOV) 그리기 - [추가된 부분]
+            // 부채꼴 모양 (90도 화각 가정)
+            ctx.beginPath();
+            ctx.moveTo(0, 0); // 로봇 중심에서 시작
+            // -135도 ~ -45도 (위쪽 방향이 -90도이므로 좌우 45도씩)
+            ctx.arc(0, 0, 80, -Math.PI * 0.75, -Math.PI * 0.25); 
+            ctx.closePath();
+            
+            // 그라데이션 효과 (카메라 불빛처럼)
+            let grd = ctx.createRadialGradient(0, 0, 10, 0, 0, 80);
+            grd.addColorStop(0, "rgba(255, 255, 0, 0.4)"); // 중심은 밝은 노랑
+            grd.addColorStop(1, "rgba(255, 255, 0, 0.0)"); // 끝은 투명
+            ctx.fillStyle = grd;
+            ctx.fill();
+
+            // (4) 로봇 본체 (화살표)
+            ctx.fillStyle = '#00ff00';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#00ff00';
+            ctx.beginPath();
+            ctx.moveTo(0, -12); // 머리 (조금 더 길게)
+            ctx.lineTo(9, 10);
+            ctx.lineTo(0, 6);
+            ctx.lineTo(-9, 10);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.restore();
+        }
+
+        function send(act) {
+            fetch('/control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: act })
+            });
+            if (navigator.vibrate) navigator.vibrate(30);
+        }
+
+        setInterval(() => {
+            fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    robot.x = data.x;
+                    robot.y = data.y;
+                    robot.head = data.head;
+                    
+                    document.getElementById('val_x').innerText = robot.x.toFixed(2);
+                    document.getElementById('val_y').innerText = robot.y.toFixed(2);
+                    document.getElementById('val_head').innerText = robot.head;
+                    draw();
+                });
+        }, 100);
+
+        draw();
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'w') send('up');
+            else if (e.key === 's') send('down');
+            else if (e.key === 'a') send('left');
+            else if (e.key === 'd') send('right');
+            else if (e.key === ' ') send('stop');
+        });
+    </script>
+</body>
+</html>

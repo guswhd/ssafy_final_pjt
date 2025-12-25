@@ -1,0 +1,37 @@
+[1.908s] Invoking command in '/home/ssafy/ros2_ws/src/my_bot_controller': PYTHONPATH=/home/ssafy/ros2_ws/build/my_bot_controller/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssafy/ros2_ws/install/my_bot_controller/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/my_bot_controller build --build-base /home/ssafy/ros2_ws/build/my_bot_controller/build install --record /home/ssafy/ros2_ws/build/my_bot_controller/install.log --single-version-externally-managed install_data
+[2.279s] running egg_info
+[2.280s] creating ../../build/my_bot_controller/my_bot_controller.egg-info
+[2.304s] writing ../../build/my_bot_controller/my_bot_controller.egg-info/PKG-INFO
+[2.305s] writing dependency_links to ../../build/my_bot_controller/my_bot_controller.egg-info/dependency_links.txt
+[2.305s] writing entry points to ../../build/my_bot_controller/my_bot_controller.egg-info/entry_points.txt
+[2.305s] writing requirements to ../../build/my_bot_controller/my_bot_controller.egg-info/requires.txt
+[2.306s] writing top-level names to ../../build/my_bot_controller/my_bot_controller.egg-info/top_level.txt
+[2.306s] writing manifest file '../../build/my_bot_controller/my_bot_controller.egg-info/SOURCES.txt'
+[2.357s] reading manifest file '../../build/my_bot_controller/my_bot_controller.egg-info/SOURCES.txt'
+[2.358s] writing manifest file '../../build/my_bot_controller/my_bot_controller.egg-info/SOURCES.txt'
+[2.358s] running build
+[2.358s] running build_py
+[2.359s] creating /home/ssafy/ros2_ws/build/my_bot_controller/build
+[2.359s] creating /home/ssafy/ros2_ws/build/my_bot_controller/build/lib
+[2.359s] creating /home/ssafy/ros2_ws/build/my_bot_controller/build/lib/my_bot_controller
+[2.359s] copying my_bot_controller/gui_controller.py -> /home/ssafy/ros2_ws/build/my_bot_controller/build/lib/my_bot_controller
+[2.360s] copying my_bot_controller/__init__.py -> /home/ssafy/ros2_ws/build/my_bot_controller/build/lib/my_bot_controller
+[2.360s] running install
+[2.369s] running install_lib
+[2.395s] creating /home/ssafy/ros2_ws/install/my_bot_controller/lib/python3.12/site-packages/my_bot_controller
+[2.395s] copying /home/ssafy/ros2_ws/build/my_bot_controller/build/lib/my_bot_controller/gui_controller.py -> /home/ssafy/ros2_ws/install/my_bot_controller/lib/python3.12/site-packages/my_bot_controller
+[2.395s] copying /home/ssafy/ros2_ws/build/my_bot_controller/build/lib/my_bot_controller/__init__.py -> /home/ssafy/ros2_ws/install/my_bot_controller/lib/python3.12/site-packages/my_bot_controller
+[2.396s] byte-compiling /home/ssafy/ros2_ws/install/my_bot_controller/lib/python3.12/site-packages/my_bot_controller/gui_controller.py to gui_controller.cpython-312.pyc
+[2.398s] byte-compiling /home/ssafy/ros2_ws/install/my_bot_controller/lib/python3.12/site-packages/my_bot_controller/__init__.py to __init__.cpython-312.pyc
+[2.398s] running install_data
+[2.398s] creating /home/ssafy/ros2_ws/install/my_bot_controller/share/ament_index
+[2.398s] creating /home/ssafy/ros2_ws/install/my_bot_controller/share/ament_index/resource_index
+[2.398s] creating /home/ssafy/ros2_ws/install/my_bot_controller/share/ament_index/resource_index/packages
+[2.398s] copying resource/my_bot_controller -> /home/ssafy/ros2_ws/install/my_bot_controller/share/ament_index/resource_index/packages
+[2.398s] copying package.xml -> /home/ssafy/ros2_ws/install/my_bot_controller/share/my_bot_controller
+[2.399s] running install_egg_info
+[2.426s] Copying ../../build/my_bot_controller/my_bot_controller.egg-info to /home/ssafy/ros2_ws/install/my_bot_controller/lib/python3.12/site-packages/my_bot_controller-0.0.0-py3.12.egg-info
+[2.427s] running install_scripts
+[2.614s] Installing controller script to /home/ssafy/ros2_ws/install/my_bot_controller/lib/my_bot_controller
+[2.614s] writing list of installed files to '/home/ssafy/ros2_ws/build/my_bot_controller/install.log'
+[2.735s] Invoked command in '/home/ssafy/ros2_ws/src/my_bot_controller' returned '0': PYTHONPATH=/home/ssafy/ros2_ws/build/my_bot_controller/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ssafy/ros2_ws/install/my_bot_controller/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/my_bot_controller build --build-base /home/ssafy/ros2_ws/build/my_bot_controller/build install --record /home/ssafy/ros2_ws/build/my_bot_controller/install.log --single-version-externally-managed install_data
