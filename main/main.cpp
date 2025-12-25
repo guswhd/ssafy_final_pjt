@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Apache-2.0
- */
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -43,7 +38,7 @@ static size_t uart_port = UART_NUM_0;
 
 //MOTOR CONFIGURATIONS
 #define BDC_MCPWM_TIMER_RESOLUTION_HZ 10000000 // 10MHz, 1 tick = 0.1us
-#define BDC_MCPWM_FREQ_HZ             25000    // 25KHz PWM
+#define BDC_MCPWM_FREQ_HZ             15000    // 25KHz PWM
 #define BDC_MCPWM_DUTY_TICK_MAX       (BDC_MCPWM_TIMER_RESOLUTION_HZ / BDC_MCPWM_FREQ_HZ) // maximum value we can set for the duty cycle, in ticks
 
 #define MOTOR_LEFT_MCPWM_GPIO_A              17
@@ -60,6 +55,11 @@ static size_t uart_port = UART_NUM_0;
 #define ENC_HIGH_LIMIT 30000
 #define ENC_LOW_LIMIT -30000
 
+//Test for mid-air PWM test
+//Right is far from ESP
+#define MOTOR_LEFT_MIN_PWM 320//305//270
+#define MOTOR_RIGHT_MIN_PWM 327//312//275
+
 #define BDC_PID_LOOP_PERIOD_MS        10   // calculate the motor speed every 10ms
 #define BDC_PID_EXPECT_SPEED          570  // expected motor speed, in the pulses counted by the rotary encoder
 
@@ -69,6 +69,9 @@ static size_t uart_port = UART_NUM_0;
 #define CMD_VEL_TO_TICKS_FACTOR 50.0f
 #define CMD_TURN_TO_RATE_FACTOR 1.0f
 
+//Fix this value after reinfocing the chassis
+#define PITCH_OFFSET -1.8
+//-3.0
 //ROS Configs
 
 typedef struct {
@@ -208,9 +211,82 @@ void set_motor_speed_safe(bdc_motor_handle_t motor, int speed) {
     }
 }
 
-static void pid_loop_cb(void *args)
-{
-    robot_control_context_t *ctx = (robot_control_context_t *)args;
+int add_deadzone(float pwm_input, int min_pwm) {
+    int final_pwm = 0;
+
+    if (pwm_input > 0.1) {
+        final_pwm = (int)(pwm_input + min_pwm);
+    } 
+    else if (pwm_input < -0.1) {
+        final_pwm = (int)(pwm_input - min_pwm);
+    } 
+    else {
+        return 0;
+    }
+    // --- CRITICAL FIX: SAFETY CLAMP ---
+    // Prevent the value from exceeding the hardware limit (400)
+    if (final_pwm > BDC_MCPWM_DUTY_TICK_MAX) {
+        final_pwm = BDC_MCPWM_DUTY_TICK_MAX;
+    }
+    else if (final_pwm < -BDC_MCPWM_DUTY_TICK_MAX) {
+        final_pwm = -BDC_MCPWM_DUTY_TICK_MAX;
+    }
+
+    return final_pwm;
+}
+
+// static void pid_loop_cb(void *args)
+// {
+//     robot_control_context_t *ctx = (robot_control_context_t *)args;
+    
+//     int left_count = 0;
+//     int right_count = 0;    
+//     pcnt_unit_get_count(ctx->pcnt_encoder_left, &left_count);
+//     pcnt_unit_get_count(ctx->pcnt_encoder_right, &right_count);
+
+//     static int prev_left = 0;
+//     static int prev_right = 0;
+
+//     float raw_speed = ((left_count - prev_left) + (right_count - prev_right)) / 2.0f;
+//     prev_left = left_count;
+//     prev_right = right_count;
+    
+//     ctx->lpf_speed = (VELOCITY_FILTER_ALPHA * raw_speed) + ((1.0 - VELOCITY_FILTER_ALPHA) *ctx->lpf_speed);
+
+//     //add Cutoff
+//     if (fabs(ctx->current_pitch) > 45.0) {
+//         set_motor_speed_safe(ctx->motor_left, 0);
+//         set_motor_speed_safe(ctx->motor_right, 0);
+//         ESP_LOGE(TAG, "Error: Robot fallen, ending PID loop");
+//         return;
+//     }
+
+//     float target_pitch = 0;
+//     //float vel_error = ctx->target_speed - raw_speed;
+//     // float velocity_error = ctx->target_speed - ctx->lpf_speed;
+//     // pid_compute(ctx->pid_ctrl_velocity, velocity_error, &target_pitch);
+
+//     float balance_pwm = 0;
+//     float balance_error = (ctx->current_pitch - PITCH_OFFSET) - target_pitch;
+//     //float balance_error = target_pitch - ctx->current_pitch;
+//     pid_compute(ctx->pid_ctrl_balance, balance_error, &balance_pwm);
+
+//     float turn_pwm = 0;
+//     // float turn_error = ctx->target_turn_rate - ctx->current_yaw_rate;
+//     // pid_compute(ctx->pid_ctrl_turn, turn_error, &turn_pwm);
+
+//     float left_total = (int) (balance_pwm + turn_pwm);
+//     float right_total = (int) (balance_pwm - turn_pwm);
+
+//     int left_pwm_output = add_deadzone(left_total, MOTOR_LEFT_MIN_PWM);
+//     int right_pwm_output = add_deadzone(right_total, MOTOR_RIGHT_MIN_PWM);
+
+//     set_motor_speed_safe(ctx->motor_left, left_pwm_output);
+//     set_motor_speed_safe(ctx->motor_right, right_pwm_output);
+// }
+
+void update_motor_control(robot_control_context_t *ctx) {
+    // robot_control_context_t *ctx = (robot_control_context_t *)ctx;
     
     int left_count = 0;
     int right_count = 0;    
@@ -237,22 +313,26 @@ static void pid_loop_cb(void *args)
     float target_pitch = 0;
     //float vel_error = ctx->target_speed - raw_speed;
     float velocity_error = ctx->target_speed - ctx->lpf_speed;
+    //float velocity_error = ctx->lpf_speed - ctx->target_speed;
     pid_compute(ctx->pid_ctrl_velocity, velocity_error, &target_pitch);
 
     float balance_pwm = 0;
-    float balance_error = ctx->current_pitch - target_pitch;
+    float balance_error = (ctx->current_pitch - PITCH_OFFSET) - target_pitch;
     //float balance_error = target_pitch - ctx->current_pitch;
     pid_compute(ctx->pid_ctrl_balance, balance_error, &balance_pwm);
 
     float turn_pwm = 0;
-    float turn_error = ctx->target_turn_rate - ctx->current_yaw_rate;
-    pid_compute(ctx->pid_ctrl_turn, turn_error, &turn_pwm);
+    // float turn_error = ctx->target_turn_rate - ctx->current_yaw_rate;
+    // pid_compute(ctx->pid_ctrl_turn, turn_error, &turn_pwm);
 
-    int left_pwm_output = (int) (balance_pwm + turn_pwm);
-    int right_pwm_output = (int) (balance_pwm - turn_pwm);
+    float left_total = (int) (balance_pwm + turn_pwm);
+    float right_total = (int) (balance_pwm - turn_pwm);
 
-    set_motor_speed_safe(ctx->motor_left, (int) left_pwm_output);
-    set_motor_speed_safe(ctx->motor_right, (int) right_pwm_output);
+    int left_pwm_output = add_deadzone(left_total, MOTOR_LEFT_MIN_PWM);
+    int right_pwm_output = add_deadzone(right_total, MOTOR_RIGHT_MIN_PWM);
+
+    set_motor_speed_safe(ctx->motor_left, left_pwm_output);
+    set_motor_speed_safe(ctx->motor_right, right_pwm_output);
 }
 
 extern "C" void app_main(void)
@@ -389,11 +469,11 @@ extern "C" void app_main(void)
     pid_ctrl_parameter_t bal_pid_runtime_param = {
         .kp = 30.0,
         .ki = 0.0,
-        .kd = 1.5,
+        .kd = 30.0,
         .max_output   = BDC_MCPWM_DUTY_TICK_MAX - 1,
         .min_output   = -BDC_MCPWM_DUTY_TICK_MAX,
-        .max_integral = 1000,
-        .min_integral = -1000,
+        .max_integral = 200,
+        .min_integral = -200,
         .cal_type = PID_CAL_TYPE_POSITIONAL,
     };
     pid_ctrl_block_handle_t bal_pid_ctrl = NULL;
@@ -405,11 +485,11 @@ extern "C" void app_main(void)
     
     //Velocity PID
     pid_ctrl_parameter_t vel_pid_runtime_param = {
-        .kp = 0.6,
-        .ki = 0.4,
-        .kd = 0.2,
-        .max_output   = 15,
-        .min_output   = -15,
+        .kp = 0.01,
+        .ki = 0.00,
+        .kd = 0.0,
+        .max_output   = 10.0,
+        .min_output   = -10.0,
         .cal_type = PID_CAL_TYPE_POSITIONAL,
     };
     pid_ctrl_block_handle_t vel_pid_ctrl = NULL;
@@ -420,8 +500,8 @@ extern "C" void app_main(void)
     robot_ctrl_ctx.pid_ctrl_velocity = vel_pid_ctrl;
 
     pid_ctrl_parameter_t turn_pid_params = {
-        .kp = 1.0,
-        .ki = 0.05,
+        .kp = 0.0,
+        .ki = 0.0,
         .kd = 0.0,
         .max_output = 200,
         .min_output = -200,
@@ -434,22 +514,22 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(pid_new_control_block(&turn_pid_config, &turn_pid_ctrl));
     robot_ctrl_ctx.pid_ctrl_turn = turn_pid_ctrl;
 
-    ESP_LOGI(TAG, "Create a timer to do PID calculation periodically");
-    const esp_timer_create_args_t periodic_timer_args = {
-        .callback = pid_loop_cb,
-        .arg = &robot_ctrl_ctx,
-        .name = "pid_loop"
-    };
-    esp_timer_handle_t pid_loop_timer = NULL;
-    ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &pid_loop_timer));
+    // ESP_LOGI(TAG, "Create a timer to do PID calculation periodically");
+    // const esp_timer_create_args_t periodic_timer_args = {
+    //     .callback = pid_loop_cb,
+    //     .arg = &robot_ctrl_ctx,
+    //     .name = "pid_loop"
+    // };
+    // esp_timer_handle_t pid_loop_timer = NULL;
+    // ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &pid_loop_timer));
     
     //==================================== PID Configuration Ends   ===========================================
     ESP_LOGI(TAG, "Enable motor");
     ESP_ERROR_CHECK(bdc_motor_enable(motor_left));
     ESP_ERROR_CHECK(bdc_motor_enable(motor_right));
 
-    ESP_LOGI(TAG, "Start motor speed loop");
-    ESP_ERROR_CHECK(esp_timer_start_periodic(pid_loop_timer, BDC_PID_LOOP_PERIOD_MS * 1000));
+    // ESP_LOGI(TAG, "Start motor speed loop");
+    // ESP_ERROR_CHECK(esp_timer_start_periodic(pid_loop_timer, BDC_PID_LOOP_PERIOD_MS * 1000));
     //Start ROS Loop using RTOS
     xTaskCreatePinnedToCore(micro_ros_task,
             "uros_task",
@@ -460,7 +540,16 @@ extern "C" void app_main(void)
             0); //run at core 0, priority 5
 
     //==================================== IMU Configuration Starts ===========================================
-    static BNO08x imu;
+    bno08x_config_t imu_config; //create config struct
+    imu_config.io_rst = GPIO_NUM_9;
+    imu_config.io_int = GPIO_NUM_8;
+    imu_config.io_cs = GPIO_NUM_10;
+    imu_config.io_mosi = GPIO_NUM_11;   //assign pin
+    imu_config.io_miso = GPIO_NUM_13;   //assign pin
+    imu_config.io_sclk = GPIO_NUM_12;
+    //etc...
+    static BNO08x imu(imu_config);            //pass config to BNO08x constructor
+
     if (!imu.initialize())
     {
         ESP_LOGE(TAG, "Init failure, returning from main.");
@@ -468,11 +557,12 @@ extern "C" void app_main(void)
     }
 
     // enable game rotation vector and calibrated gyro reports
-    imu.rpt.rv_game.enable(5000UL);  // 100,000us == 100ms report interval
-    imu.rpt.cal_gyro.enable(5000UL); // 100,000us == 100ms report interval
+    imu.rpt.rv_game.enable(2000UL);  // 100,000us == 100ms report interval
+    imu.rpt.cal_gyro.enable(2000UL); // 100,000us == 100ms report interval
     //==================================== Main Loop Starts ===========================================
+    int64_t last_log_time = esp_timer_get_time();
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1)); // 0.5초마다 출력 (너무 빠르면 보기 힘듭니다)
+        //vTaskDelay(pdMS_TO_TICKS(1)); // 0.5초마다 출력 (너무 빠르면 보기 힘듭니다)
         // block until new report is detected
         if (imu.data_available())
         {
@@ -482,8 +572,8 @@ extern "C" void app_main(void)
                 // get absolute heading in degrees
                 bno08x_euler_angle_t euler = imu.rpt.rv_game.get_euler();
                 // display heading
-                ESP_LOGI(TAG, "Euler Angle: x (roll): %.2f y (pitch): %.2f z (yaw): %.2f", euler.x, euler.y, euler.z);
-                robot_ctrl_ctx.current_pitch = euler.y;
+                robot_ctrl_ctx.current_pitch = euler.x;
+                update_motor_control(&robot_ctrl_ctx);
             }
 
             // check for cal gyro report
@@ -492,9 +582,14 @@ extern "C" void app_main(void)
                 // get angular velocity in rad/s
                 bno08x_gyro_t velocity = imu.rpt.cal_gyro.get();
                 // display velocity
-                ESP_LOGW(TAG, "Velocity: x: %.2f y: %.2f z: %.2f", velocity.x, velocity.y, velocity.z);
                 robot_ctrl_ctx.current_yaw_rate = velocity.z;
             }
+        }
+        if (esp_timer_get_time() - last_log_time > 500000){
+            last_log_time = esp_timer_get_time();
+            ESP_LOGI(TAG, "Pitch: %.2f | Speed: %.2f", 
+            robot_ctrl_ctx.current_pitch, 
+            robot_ctrl_ctx.lpf_speed);
         }
     }
 }

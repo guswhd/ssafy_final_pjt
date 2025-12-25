@@ -1,10 +1,5 @@
-<<<<<<< HEAD
 build
 sdkconfig
 sdkconfig.old
 components
 managed_components
-=======
-components/*
-build/*
->>>>>>> 6062975622c3767fd9c041fb4b267d3b85742423
